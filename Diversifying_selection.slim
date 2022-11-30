@@ -1,0 +1,79 @@
+// Keywords: quantitative trait
+initialize()
+{
+	initializeMutationRate(1e-7);
+	initializeMutationType("m1", 0.5, "f", 0.0); // neutral
+	initializeMutationType("m2", 0.5, "n", 0.0, 0.15); // QTLs
+	m2.convertToSubstitution = F;
+	initializeGenomicElementType("g1", c(m1, m2), c(1.0, 0.1));
+	initializeGenomicElement(g1, 0, 99999);
+	initializeRecombinationRate(1e-8);
+	if (fileExists("/usr/bin/Rscript"))
+		defineConstant("RSCRIPT", "/usr/bin/Rscript");
+	else if (fileExists("/usr/local/bin/Rscript"))
+		defineConstant("RSCRIPT", "/usr/local/bin/Rscript");
+	else
+		stop("Couldn't find Rscript.");
+	defineConstant("pngPath", writeTempFile("plot_", ".png", ""));
+	if (exists("slimgui"))
+		slimgui.openDocument(pngPath);
+}
+
+mutationEffect(m2)
+{
+	return 1.0;
+}
+
+1 early()
+{
+	sim.addSubpop("p1", 500);
+	sim.addSubpop("p2", 500);
+	sim.addSubpop("p3", 500);
+	sim.addSubpop("p4", 500);
+	sim.setValue("history", matrix(c(0.0, 0.0, 0.0, 0.0), nrow=1));
+}
+
+1: late()
+{
+		phenotype_p1 = p1.individuals.sumOfMutationsOfType(m2);
+		phenotype_p2 = p2.individuals.sumOfMutationsOfType(m2);
+		phenotype_p3 = p3.individuals.sumOfMutationsOfType(m2);
+		phenotype_p4 = p4.individuals.sumOfMutationsOfType(m2);
+		scale = dnorm(0.0, 0.0, 2.0);
+		p1.individuals.fitnessScaling = 1.5 - dnorm(phenotype_p1, 0.0, 2.0) / scale;
+		p2.individuals.fitnessScaling = 1.5 - dnorm(phenotype_p2, 0.0, 2.0) / scale;
+		p3.individuals.fitnessScaling = 1.5 - dnorm(phenotype_p3, 0.0, 2.0) / scale;
+		p4.individuals.fitnessScaling = 1.5 - dnorm(phenotype_p4, 0.0, 2.0) / scale;
+		mean_pheno_p1 = mean(phenotype_p1);
+		mean_pheno_p2 = mean(phenotype_p2);
+		mean_pheno_p3 = mean(phenotype_p3);
+		mean_pheno_p4 = mean(phenotype_p4);
+		
+	//if (sim.cycle % 100 == 0)
+	history = sim.getValue("history");
+	history = rbind(history, c(mean_pheno_p1, mean_pheno_p2, mean_pheno_p3, mean_pheno_p4));
+	sim.setValue("history", history);
+	
+	rstr = paste('{', 
+	'x <- (1:' + size(history[,0]) + ')',
+	'y1 <- c(' + paste(history[,0], sep=", ") + ')',
+	'y2 <- c(' + paste(history[,1], sep=", ") + ')',
+	'y3 <- c(' + paste(history[,2], sep=", ") + ')',
+	'y4 <- c(' + paste(history[,3], sep=", ") + ')',
+	'png("' + pngPath + '", width=4, height=4, units="in", res=72)', 
+	'plot(x=x, y=y1, xlim=c(0, 1000), ylim=c(-5, 5), type="l", col = "blue", xlab="cycle", ylab="phenotype")', 
+	'lines(x=x, y=y2, col = "green" )', 
+	'lines(x=x, y=y3, col = "orange" )', 
+	'lines(x=x, y=y4, col = "red" )', 
+	'dev.off()', 
+	'}', 
+	sep="\n");
+	
+	scriptPath = writeTempFile("plot_", ".R", rstr);
+	system(RSCRIPT, args=scriptPath);
+}
+
+1000 late()
+{
+	print(sim.getValue("history"));
+}
